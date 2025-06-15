@@ -2,21 +2,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    cell::RefCell,
     env,
     error::Error,
-    ops::Deref,
-    rc::Rc,
     sync::{Arc, Mutex, OnceLock},
 };
 
-use deconz::Light;
+use deconz::{Light, LightState};
 use gtk::{gio, glib, prelude::*};
 use gtk4::{
-    self as gtk, Button, Label, ListBoxRow, Orientation, ScrolledWindow, Stack,
-    builders::ScrolledWindowBuilder,
-    gio::ListStore,
-    glib::{GStr, property::PropertyGet},
+    self as gtk, Button, Label, Orientation, ScrolledWindow,
 };
 use tokio::runtime::Runtime;
 
@@ -38,6 +32,8 @@ fn build_ui(application: &gtk::Application) {
     let mut lights: Arc<Mutex<Vec<Light>>> = Arc::new(Mutex::new(vec![]));
 
     let mut selected_light: Arc<Mutex<Option<Light>>> = Arc::new(Mutex::new(None));
+    let mut selected_light_state: Arc<Mutex<Option<LightState>>> = Arc::new(Mutex::new(None));
+
     let list_box = gtk::ListBox::new();
 
     let scrolled_window = ScrolledWindow::builder().child(&list_box).build();
@@ -63,7 +59,9 @@ fn build_ui(application: &gtk::Application) {
 
     let a_lights = lights.clone();
     let a_selected_light= selected_light.clone();
-    list_box.connect_row_selected(move |list_box, row| {
+    let a_client = client.clone();
+    let a_light_state = selected_light_state.clone();
+    list_box.connect_row_selected(move |_, row| {
         if let Some(row) = row {
             let label = row.child().unwrap().downcast::<Label>().unwrap();
             println!("Row {} was selected", label.text());
@@ -75,16 +73,34 @@ fn build_ui(application: &gtk::Application) {
             
             let Some(light) = light else { return };
             *a_selected_light.lock().unwrap() = Some(light.clone());
+
+
+            // Load current light state
+            let b_client = a_client.clone();
+            let b_selected_light = a_selected_light.clone();
+            let b_light_state = a_light_state.clone();
+            glib::spawn_future_local(async move{
+                if let Some(light) = &*b_selected_light.lock().unwrap(){
+                    let state = b_client.get_light_state(light).await.expect(&format!("Failed to load state of light {}", light.name));
+                    println!("Got state for {}:\n{:#?}", light.name, state);
+                    *b_light_state.lock().unwrap() = Some(state);
+                }
+            });
         }
     });
     
     let a_selected_light = selected_light.clone();
     let a_client = client.clone();
+    let a_light_state = selected_light_state.clone();
     toggle_button.connect_clicked(move |_| {
+
+        let Some(state) = &*a_light_state.lock().unwrap() else {return};
+        let new_on_state = !state.on;
+
         let b_selected_light = a_selected_light.clone();
         let b_client = a_client.clone();
         glib::spawn_future_local(async move {
-            b_client.set_on_state(&b_selected_light.lock().unwrap().clone().unwrap(), true).await.unwrap();
+            b_client.set_on_state(&b_selected_light.lock().unwrap().clone().unwrap(), new_on_state).await.unwrap();
         });
     });
 
