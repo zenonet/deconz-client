@@ -1,7 +1,10 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{env, error::Error};
+use std::{env, error::Error, ops::Deref};
+
+use deconz::Light;
+use slint::{ModelRc, SharedString};
 
 slint::include_modules!();
 
@@ -19,15 +22,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("{:#?}", lights);
 
-    ui.on_request_increase_value({
+    let model = lights.iter().map(|light|{
+        light.name.clone().into()
+    }).collect::<Vec<slint::SharedString>>();
+
+    let model = ModelRc::new(slint::VecModel::from(model));
+
+    let mut selected_light_id: Option<u32> = None; 
+
+    ui.set_lights_model(model);
+
+    ui.on_light_clicked({
         let ui_handle = ui.as_weak();
-        move || {
+        move |name| {
+
+            let light = lights.iter().find(|l| l.name == *name);
+
+            selected_light_id = light.and_then(|l| Some(l.id));
+
+            println!("Lamp clicked: {}", name);
             let ui = ui_handle.unwrap();
             ui.set_counter(ui.get_counter() + 1);
-            ui.set_showLabel(ui.get_counter() % 2 == 0)
+            ui.set_showLabel(ui.get_counter() % 2 == 0);
+
+            ui.set_selected_light_name(SharedString::from(name));
         }
     });
 
+    // Somehow need to react to change in on_state
     
     ui.run()?;
 

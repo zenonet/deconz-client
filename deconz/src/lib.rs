@@ -9,7 +9,7 @@ pub enum Error {
     IdParseError(ParseIntError),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// An authorized client for a deconz server
 pub struct DeconzClient {
     /// The url of the deconz server
@@ -19,7 +19,7 @@ pub struct DeconzClient {
     http: reqwest::Client,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Light {
     pub name: String,
     pub id: u32,

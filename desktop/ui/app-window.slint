@@ -1,24 +1,69 @@
-import { Button, VerticalBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, ListView, StandardListView } from "std-widgets.slint";
+
+export component LightRow {
+    in property <string> light;
+    callback clicked <=> touchArea.clicked;
+
+    touchArea := TouchArea {
+        HorizontalBox {
+            spacing: 20px;
+            Text {
+                text: light;
+            }
+        }
+    }
+}
+
+export component LightController {
+    in property <string> name;
+    in-out property <bool> isOn: false;
+
+    VerticalBox {
+
+        Text {
+            text: name;
+        }
+
+        Button {
+            text: isOn ? "Turn off" : "Turn on";
+            clicked => {
+                isOn = !isOn;
+            }
+        }
+    }
+}
 
 export component AppWindow inherits Window {
     in-out property <int> counter: 42;
     in-out property <bool> showLabel: false;
-    callback request-increase-value();
-    VerticalBox {
-        Text {
-            text: "Counter: \{root.counter}";
-        }
+    in-out property <[string]> lights_model;
 
-        Button {
-            text: "Increase value";
-            clicked => {
-                root.request-increase-value();
+    in property <string> selected_light_name;
+    in-out property <bool> is_selected_light_on;
+
+    callback light_clicked(string);
+    callback turn_on_clicked();
+    HorizontalLayout {
+        VerticalBox {
+            Text {
+                text: "Available lights:";
+            }
+
+            ListView {
+                min-height: 600px;
+                min-width: 400px;
+                for l in lights_model: LightRow {
+                    light: l;
+                    clicked => {
+                        light_clicked(l);
+                    }
+                }
             }
         }
 
-        Text {
-            text: "Heh!";
-            visible: showLabel;
+        LightController {
+            name: selected_light_name;
+            isOn: is_selected_light_on;
         }
     }
 }
