@@ -137,4 +137,21 @@ impl DeconzClient {
 
         Ok(lights)
     }
+
+    pub async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error>{
+        #[derive(Serialize)]
+        struct OnOffReq{
+            on: bool
+        }
+
+        let resp = self.http
+            .put(self.url.join(&format!("api/{}/lights/{}/state", self.username, light.id)).unwrap())
+            .json(&OnOffReq{
+                on: state
+            })
+            .send().await;
+        let response = resp.and_then(|r| r.error_for_status()).map_err(|e| Error::HttpError(e))?;
+
+        Ok(())
+    }
 }
