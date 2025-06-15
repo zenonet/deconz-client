@@ -5,7 +5,10 @@ use std::{cell::RefCell, env, error::Error, ops::Deref, rc::Rc, sync::OnceLock};
 
 use deconz::Light;
 use gtk::{gio, glib, prelude::*};
-use gtk4::{self as gtk, builders::ScrolledWindowBuilder, gio::ListStore, glib::GStr, Label, ScrolledWindow};
+use gtk4::{
+    self as gtk, Button, Label, ListBoxRow, Orientation, ScrolledWindow, Stack,
+    builders::ScrolledWindowBuilder, gio::ListStore, glib::GStr,
+};
 use tokio::runtime::Runtime;
 
 fn runtime() -> &'static Runtime {
@@ -17,7 +20,7 @@ fn build_ui(application: &gtk::Application) {
     let window = gtk::ApplicationWindow::new(application);
 
     window.set_title(Some("Deconz Control"));
-    window.set_default_size(350, 600);
+    window.set_default_size(500, 700);
 
     /* lights.iter().for_each(|app_info| {
         model.append(&GStr::from(app_info.name));
@@ -28,17 +31,36 @@ fn build_ui(application: &gtk::Application) {
 
     let list_box = gtk::ListBox::new();
 
-    let l = Label::new(Some("Nee"));
-    let l2 = Label::new(Some("Ndocj"));
 
-    list_box.append(&l);
-    list_box.append(&l2);
+    let scrolled_window = ScrolledWindow::builder().child(&list_box).build();
 
-    let scrolled_window = ScrolledWindow::builder()
-        .child(&list_box)
+    let controller = gtk::Box::new(Orientation::Vertical, 10);
+    let light_name_label = Label::new(Some("No lamp selected"));
+
+    controller.append(&light_name_label);
+    let l = Label::new(Some("Toggle lamp"));
+    let but = Button::builder()
+        .child(&l)
+        .tooltip_text("Toggles the on/off state of the lamp")
         .build();
-    
-    window.set_child(Some(&scrolled_window));
+    controller.append(&but);
+
+    let layout = gtk::Box::new(gtk4::Orientation::Horizontal, 0);
+    layout.set_homogeneous(true);
+
+    layout.append(&scrolled_window);
+    layout.append(&controller);
+
+    window.set_child(Some(&layout));
+
+    list_box.connect_row_selected(move |list_box, row| {
+        if let Some(row) = row {
+            let label = row.child().unwrap().downcast::<Label>().unwrap();
+            println!("Row {} was selected", label.text());
+            light_name_label.set_text(&label.text());
+        }
+    });
+
     window.present();
 
     glib::spawn_future_local(async move {
@@ -50,20 +72,13 @@ fn build_ui(application: &gtk::Application) {
 
         for light in lights {
             let label = Label::new(Some(&light.name));
+            // let row = ListBoxRow::builder().child(&label).build();
             list_box.append(&label);
         }
     });
 }
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    //let client = deconz::DeconzClient::login_with_link_button("http://192.168.1.239/").await.unwrap();
-    //let client = deconz::DeconzClient::login_with_token(url, token).unwrap();
-
-    //let lights = client.get_light_list().await.unwrap();
-    //let lights = RefCell::from(lights);
-
-    //println!("{:#?}", lights);
-
     let application = gtk::Application::builder()
         .application_id("de.zenonet.deconz")
         .build();
