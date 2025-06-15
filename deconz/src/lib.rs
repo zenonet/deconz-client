@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum Error {
     HttpError(reqwest::Error),
     IdParseError(ParseIntError),
+    ResponseParseError,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +24,12 @@ pub struct DeconzClient {
 pub struct Light {
     pub name: String,
     pub id: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Copy)]
+pub struct LightState{
+    pub on: bool,
+    pub reachable: bool,
 }
 
 impl DeconzClient {
@@ -153,5 +160,25 @@ impl DeconzClient {
         let response = resp.and_then(|r| r.error_for_status()).map_err(|e| Error::HttpError(e))?;
 
         Ok(())
+    }
+
+    pub async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>{
+        
+        #[derive(Deserialize)]
+        struct OuterLightState{
+            state: LightState
+        }
+        
+        let state = self.http
+            .get(self.url.join(&format!("api/{}/lights/{}", self.username, light.id)).unwrap())
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?
+            .json::<OuterLightState>()
+            .await
+            .map_err(|_| Error::ResponseParseError)?;
+
+        Ok(state.state)
     }
 }
