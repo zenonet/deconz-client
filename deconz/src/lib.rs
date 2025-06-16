@@ -157,7 +157,7 @@ impl DeconzClient {
                 on: state
             })
             .send().await;
-        let response = resp.and_then(|r| r.error_for_status()).map_err(|e| Error::HttpError(e))?;
+        let _ = resp.and_then(|r| r.error_for_status()).map_err(|e| Error::HttpError(e))?;
 
         Ok(())
     }

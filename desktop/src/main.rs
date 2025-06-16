@@ -2,13 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    env, error::Error, ops::Shl, sync::{Arc, Mutex, OnceLock}
+    env, error::Error, sync::{Arc, Mutex}
 };
 
 use deconz::{DeconzClient, Light, LightState};
-use gtk::{gio, glib, prelude::*};
-use gtk4::{self as gtk, builders::ColorChooserWidgetBuilder, Button, ColorChooserWidget, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow};
-use tokio::runtime::Runtime;
+use gtk::{glib, prelude::*};
+use gtk4::{self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow};
 
 struct ViewModel {
     state: Mutex<State>,
@@ -51,11 +50,6 @@ struct Ui {
     toggle_button_text: Label,
     controller_layout: gtk::Box,
     color_control: ColorDialogButton,
-}
-
-fn runtime() -> &'static Runtime {
-    static RUNTIME: OnceLock<Runtime> = OnceLock::new();
-    RUNTIME.get_or_init(|| Runtime::new().expect("Setting up tokio runtime needs to succeed."))
 }
 
 fn build_ui(application: &gtk::Application) -> Ui {
@@ -213,7 +207,6 @@ fn add_app_logic(ui: Ui) {
     }
 
     {
-        let a_ui = ui.clone();
         let model = model.clone();
         ui.color_control.connect_rgba_notify(move |but|{
             let col = but.rgba();
@@ -256,7 +249,6 @@ fn add_app_logic(ui: Ui) {
                 let state = model.state.lock().unwrap();
                 let light = state.selected_light().unwrap(); // todo fix unwrap
                 model.client.set_light_color(light, h as u16, b as u8, s as u8).await.unwrap();
-                println!("Updated color");
             });
         });
     }
