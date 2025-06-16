@@ -49,6 +49,7 @@ struct Ui {
     list_box: ListBox,
     toggle_button: Button,
     light_name_label: Label,
+    light_status_label: Label,
     toggle_button_text: Label,
     controller_layout: gtk::Box,
 }
@@ -69,10 +70,17 @@ fn build_ui(application: &gtk::Application) -> Ui {
     let scrolled_window = ScrolledWindow::builder().child(&list_box).build();
 
     let controller_layout = gtk::Box::new(Orientation::Vertical, 10);
+    controller_layout.set_margin_start(20);
+    controller_layout.set_margin_end(20);
+    controller_layout.set_margin_top(20);
     controller_layout.set_visible(false);
+    
     let light_name_label = Label::new(Some("No lamp selected"));
 
+    let light_status_label = Label::new(None);
+
     controller_layout.append(&light_name_label);
+    controller_layout.append(&light_status_label);
     let toggle_button_text = Label::new(Some("Toggle lamp"));
     let toggle_button = Button::builder()
         .child(&toggle_button_text)
@@ -92,6 +100,7 @@ fn build_ui(application: &gtk::Application) -> Ui {
         list_box,
         toggle_button,
         light_name_label,
+        light_status_label,
         toggle_button_text,
         controller_layout,
     };
@@ -117,6 +126,7 @@ fn add_app_logic(ui: Ui) {
                 println!("Got state for {}:\n{:#?}", light.name, light_state);
                 state.selected_light_state = Some(light_state);
                 ui.controller_layout.set_visible(true);
+                ui.light_status_label.set_text(if light_state.reachable {""} else {"Not reachable"});
                 ui.toggle_button_text.set_text(if light_state.on {"Turn off"} else {"Turn on"});
             }
         });
