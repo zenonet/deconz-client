@@ -2,14 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    env,
-    error::Error,
-    sync::{Arc, Mutex, OnceLock},
+    env, error::Error, ops::Shl, sync::{Arc, Mutex, OnceLock}
 };
 
 use deconz::{DeconzClient, Light, LightState};
 use gtk::{gio, glib, prelude::*};
-use gtk4::{self as gtk, Button, Label, ListBox, Orientation, ScrolledWindow};
+use gtk4::{self as gtk, builders::ColorChooserWidgetBuilder, Button, ColorChooserWidget, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow};
 use tokio::runtime::Runtime;
 
 struct ViewModel {
@@ -52,6 +50,7 @@ struct Ui {
     light_status_label: Label,
     toggle_button_text: Label,
     controller_layout: gtk::Box,
+    color_control: ColorDialogButton,
 }
 
 fn runtime() -> &'static Runtime {
@@ -88,6 +87,14 @@ fn build_ui(application: &gtk::Application) -> Ui {
         .build();
     controller_layout.append(&toggle_button);
 
+
+    let dialog = ColorDialog::builder()
+    .with_alpha(false).build();
+    let col = ColorDialogButton::builder()
+        .dialog(&dialog).build();
+
+    controller_layout.append(&col);
+
     let layout = gtk::Box::new(gtk4::Orientation::Horizontal, 0);
     layout.set_homogeneous(true);
 
@@ -103,6 +110,7 @@ fn build_ui(application: &gtk::Application) -> Ui {
         light_status_label,
         toggle_button_text,
         controller_layout,
+        color_control: col,
     };
 
     window.present();
@@ -201,6 +209,61 @@ fn add_app_logic(ui: Ui) {
                     fetch_light_state(model, ui.clone());
                 });
             }
+        });
+    }
+
+    {
+        let a_ui = ui.clone();
+        let model = model.clone();
+        ui.color_control.connect_rgba_notify(move |but|{
+            let col = but.rgba();
+
+            let r = col.red();
+            let g = col.green();
+            let b = col.blue();
+
+            let cmax = r.max(g).max(b);
+            let cmin = r.min(g).min(b);
+            let diff = cmax - cmin;
+
+            let mut h = -1.0;
+            let mut s = -1.0;
+
+            if cmax == cmin{
+                h = 0.0;
+            }else if cmax == r{
+                h = (60.0 * ((g - b) / diff) + 360.0) % 360.0;
+            }
+            else if cmax == g{
+                h = (60.0 * ((b - r) / diff) + 120.0) % 360.0;
+            }
+            else if cmax == b{
+                h = (60.0 * ((r - g) / diff) + 240.0) % 360.0;
+            }
+
+            if cmax == 0.0{
+                s = 0.0;
+            }else{
+                s = (diff / cmax) * 250.0;
+            }
+
+            // According to the docs, the 360° are mapped to 2^16 to increase precision
+            h = h * const { u16::MAX / 360 } as f32;
+
+            let b = cmax * 255.0;
+
+            println!("Converted {} (rgb) to ({},{},{}) (hsb)", col, h, s, b);
+
+            let model = model.clone();
+            glib::spawn_future_local(async move {
+
+                // Convert color from rgb to hsb
+
+                let state = model.state.lock().unwrap();
+                let light = state.selected_light().unwrap(); // todo fix unwrap
+                model.client.set_light_color(light, h as u16, b as u8, s as u8).await.unwrap();
+                println!("Updated color");
+            });
         });
     }
 

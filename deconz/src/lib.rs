@@ -162,6 +162,29 @@ impl DeconzClient {
         Ok(())
     }
 
+    pub async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8) -> Result<(), Error>{
+        #[derive(Serialize)]
+        struct ColorChangeReq{
+            hue: u16,
+            bri: u8,
+            sat: u8,
+        }
+
+        self.http
+            .put(self.url.join(&format!("api/{}/lights/{}/state", self.username, light.id)).unwrap())
+            .json(&ColorChangeReq{
+                hue,
+                bri,
+                sat
+            })
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?;
+
+        Ok(())
+    }
+
     pub async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>{
         
         #[derive(Deserialize)]
