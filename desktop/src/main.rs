@@ -226,33 +226,27 @@ fn add_app_logic(ui: Ui) {
             let cmin = r.min(g).min(b);
             let diff = cmax - cmin;
 
-            let mut h = -1.0;
-            let mut s = -1.0;
-
-            if cmax == cmin{
-                h = 0.0;
+            let h = if cmax == cmin{
+                0.0
             }else if cmax == r{
-                h = (60.0 * ((g - b) / diff) + 360.0) % 360.0;
+                (60.0 * ((g - b) / diff) + 360.0) % 360.0
             }
             else if cmax == g{
-                h = (60.0 * ((b - r) / diff) + 120.0) % 360.0;
+                (60.0 * ((b - r) / diff) + 120.0) % 360.0
             }
             else if cmax == b{
-                h = (60.0 * ((r - g) / diff) + 240.0) % 360.0;
-            }
-
-            if cmax == 0.0{
-                s = 0.0;
+                (60.0 * ((r - g) / diff) + 240.0) % 360.0
             }else{
-                s = (diff / cmax) * 250.0;
-            }
+                panic!("WTF, this color couldn't be converted to HSV!");
+            } * const { u16::MAX / 360 } as f32;
 
-            // According to the docs, the 360° are mapped to 2^16 to increase precision
-            h = h * const { u16::MAX / 360 } as f32;
+            let s = if cmax == 0.0{
+                0.0
+            }else{
+                (diff / cmax) * 250.0
+            };
 
             let b = cmax * 255.0;
-
-            println!("Converted {} (rgb) to ({},{},{}) (hsb)", col, h, s, b);
 
             let model = model.clone();
             glib::spawn_future_local(async move {
