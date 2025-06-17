@@ -2,15 +2,23 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
-    env, error::Error, sync::{Arc, Mutex}
+    env,
+    error::Error,
+    sync::{Arc, Mutex},
 };
 
 use deconz::{DeconzClient, DemoLightClient, Light, LightClient, LightState};
-use gtk::{glib, prelude::*};
-use gtk4::{self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow, SearchBar};
+use gtk::prelude::BoxExt;
+use gtk::{
+    self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation,
+    ScrolledWindow, SearchBar, prelude::*,
+};
+use gtk::{Entry, glib, prelude::*};
 
 struct ViewModel<C>
-where C: LightClient {
+where
+    C: LightClient,
+{
     state: Mutex<State>,
     client: C,
 }
@@ -28,7 +36,7 @@ impl State {
     }
 }
 
-impl Default for State{
+impl Default for State {
     fn default() -> Self {
         State {
             lights: vec![],
@@ -50,11 +58,11 @@ impl ViewModel<DeconzClient> {
     }
 }
 
-impl ViewModel<DemoLightClient>{
-    fn init() -> Self{
-        ViewModel { 
+impl ViewModel<DemoLightClient> {
+    fn init() -> Self {
+        ViewModel {
             state: Mutex::new(State::default()),
-            client: DemoLightClient{} 
+            client: DemoLightClient {},
         }
     }
 }
@@ -67,6 +75,7 @@ struct Ui {
     toggle_button_text: Label,
     controller_layout: gtk::Box,
     color_control: ColorDialogButton,
+    search_bar: Entry,
 }
 
 fn build_ui(application: &gtk::Application) -> Ui {
@@ -78,21 +87,24 @@ fn build_ui(application: &gtk::Application) -> Ui {
     let list_box = gtk::ListBox::new();
 
     let scrolled_window = ScrolledWindow::builder().child(&list_box).build();
+    scrolled_window.set_vexpand(true);
 
+    let search_bar = Entry::builder()
+        .hexpand(true)
+        .placeholder_text("Search for lamps...")
+        .build();
 
-    // let search_box = SearchBar::builder().build();
+    let selection_layout = gtk::Box::new(Orientation::Vertical, 0);
+    selection_layout.append(&search_bar);
 
-    // let selection_layout = gtk::Box::new(Orientation::Vertical, 10);
-    // selection_layout.append(&search_box);
-    // selection_layout.append(&selection_layout);
-
+    selection_layout.append(&scrolled_window);
 
     let controller_layout = gtk::Box::new(Orientation::Vertical, 10);
     controller_layout.set_margin_start(20);
     controller_layout.set_margin_end(20);
     controller_layout.set_margin_top(20);
     controller_layout.set_visible(false);
-    
+
     let light_name_label = Label::new(Some("No lamp selected"));
 
     let light_status_label = Label::new(None);
@@ -106,18 +118,15 @@ fn build_ui(application: &gtk::Application) -> Ui {
         .build();
     controller_layout.append(&toggle_button);
 
-
-    let dialog = ColorDialog::builder()
-    .with_alpha(false).build();
-    let col = ColorDialogButton::builder()
-        .dialog(&dialog).build();
+    let dialog = ColorDialog::builder().with_alpha(false).build();
+    let col = ColorDialogButton::builder().dialog(&dialog).build();
 
     controller_layout.append(&col);
 
-    let layout = gtk::Box::new(gtk4::Orientation::Horizontal, 0);
+    let layout = gtk::Box::new(Orientation::Horizontal, 0);
     layout.set_homogeneous(true);
 
-    layout.append(&scrolled_window);
+    layout.append(&selection_layout);
     layout.append(&controller_layout);
 
     window.set_child(Some(&layout));
@@ -130,6 +139,7 @@ fn build_ui(application: &gtk::Application) -> Ui {
         toggle_button_text,
         controller_layout,
         color_control: col,
+        search_bar
     };
 
     window.present();
@@ -142,7 +152,7 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
     let ui = Arc::new(ui);
     let model = Arc::new(model);
 
-    fn fetch_light_state<C: LightClient + 'static>(model: Arc<ViewModel<C>>, ui: Arc<Ui>){
+    fn fetch_light_state<C: LightClient + 'static>(model: Arc<ViewModel<C>>, ui: Arc<Ui>) {
         glib::spawn_future_local(async move {
             let mut state = model.state.lock().unwrap();
             if let Some(light) = state.selected_light() {
@@ -154,25 +164,69 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
                 println!("Got state for {}:\n{:#?}", light.name, light_state);
                 state.selected_light_state = Some(light_state);
                 ui.controller_layout.set_visible(true);
-                ui.light_status_label.set_text(if light_state.reachable {""} else {"Not reachable"});
-                ui.toggle_button_text.set_text(if light_state.on {"Turn off"} else {"Turn on"});
+                ui.light_status_label.set_text(if light_state.reachable {
+                    ""
+                } else {
+                    "Not reachable"
+                });
+                ui.toggle_button_text.set_text(if light_state.on {
+                    "Turn off"
+                } else {
+                    "Turn on"
+                });
             }
         });
     }
 
-    let fetch_light_list = {
+    let update_light_list = {
         let ui = ui.clone();
+        let model = model.clone();
+        move ||{
+            let mut state = model.state.lock().unwrap();
+            
+            // remember the last selected light
+            let selected_light_id = state.lights.get(state.selected_index).and_then(|l| Some(l.id));
+
+            while let Some(child) = ui.list_box.first_child(){
+                ui.list_box.remove(&child);
+            }
+            
+            let mut selected_light_index = usize::MAX;
+
+            let lights = &state.lights;
+            let search_query = ui.search_bar.text().to_lowercase();
+            for (i, light) in lights.iter().enumerate() {
+                if light.name.to_lowercase().matches(&*search_query).next().is_none() {
+                    continue;
+                }
+
+                let label = Label::new(Some(&light.name));
+                //let row = ListBoxRow::builder().child(&label).build();
+                ui.list_box.append(&label);
+
+                if selected_light_id.is_some_and(|id| light.id == id){
+                    selected_light_index = i;
+                }
+            }
+
+            // Reselect the light from before
+            state.selected_index = selected_light_index;
+            // TODO: set the selected row in the ui element
+        }
+    };
+    let update_light_list = Arc::new(update_light_list);
+
+    let fetch_light_list = {
+        let update_light_list = update_light_list.clone();
         move |model: Arc<ViewModel<C>>| {
             glib::spawn_future_local(async move {
-                let light_list = model.client.get_light_list().await.unwrap();
+                {
+                    let light_list = model.client.get_light_list().await.unwrap();
 
-                for light in light_list.iter() {
-                    let label = Label::new(Some(&light.name));
-                    // let row = ListBoxRow::builder().child(&label).build();
-                    ui.list_box.append(&label);
+                    let mut state = model.state.lock().unwrap();
+                    state.lights = light_list;
                 }
-                let mut state = model.state.lock().unwrap();
-                state.lights = light_list;
+                update_light_list();
             });
         }
     };
@@ -234,7 +288,7 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
 
     {
         let model = model.clone();
-        ui.color_control.connect_rgba_notify(move |but|{
+        ui.color_control.connect_rgba_notify(move |but| {
             let col = but.rgba();
 
             println!("rgb: {}", col);
@@ -247,23 +301,21 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
             let cmin = r.min(g).min(b);
             let diff = cmax - cmin;
 
-            let h = if cmax == cmin{
+            let h = if cmax == cmin {
                 0.0
-            }else if cmax == r{
+            } else if cmax == r {
                 (60.0 * ((g - b) / diff) + 360.0) % 360.0
-            }
-            else if cmax == g{
+            } else if cmax == g {
                 (60.0 * ((b - r) / diff) + 120.0) % 360.0
-            }
-            else if cmax == b{
+            } else if cmax == b {
                 (60.0 * ((r - g) / diff) + 240.0) % 360.0
-            }else{
+            } else {
                 panic!("WTF, this color couldn't be converted to HSV!");
             } * const { u16::MAX / 360 } as f32;
 
-            let s = if cmax == 0.0{
+            let s = if cmax == 0.0 {
                 0.0
-            }else{
+            } else {
                 (diff / cmax) * 255.0
             };
 
@@ -273,13 +325,24 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
 
             let model = model.clone();
             glib::spawn_future_local(async move {
-
                 // Convert color from rgb to hsb
 
                 let state = model.state.lock().unwrap();
                 let light = state.selected_light().unwrap(); // todo fix unwrap
-                model.client.set_light_color(light, h as u16, b as u8, s as u8).await.unwrap();
+                model
+                    .client
+                    .set_light_color(light, h as u16, b as u8, s as u8)
+                    .await
+                    .unwrap();
             });
+        });
+    }
+
+    {
+        let model = model.clone();
+        let update_light_list = update_light_list.clone();
+        ui.search_bar.connect_changed(move |_| {
+            update_light_list();
         });
     }
     println!("UI logic attached");
@@ -296,7 +359,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("App init called!");
         let ui = build_ui(&app);
         println!("Setup ui");
-        let model = ViewModel::<DemoLightClient>::init();
+        let model = ViewModel::<DeconzClient>::init();
 
         add_app_logic(ui, model);
     }

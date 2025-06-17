@@ -7,5 +7,5 @@ edition = "2024"
 
 [dependencies]
 deconz = { path = "../deconz"}
-gtk4 = { version = "0.9.6", features = ["v4_10"] }
+gtk = { package = "gtk4", version = "0.9.6", features = ["v4_10"] }
 tokio = { version = "1.45.1", features = ["macros", "rt", "rt-multi-thread"] }
