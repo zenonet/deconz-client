@@ -236,3 +236,41 @@ impl DeconzClient {
         Ok(c)
     }
 }
+
+
+
+pub struct DemoLightClient{
+
+}
+
+impl LightClient for DemoLightClient{
+    async fn get_light_list(&self) -> Result<Vec<Light>, crate::Error> {
+        Ok(vec![
+            Light{
+                name: String::from("Bathroom light"),
+                id: 1
+            },
+            Light{
+                name: String::from("Outside lighting"),
+                id: 2,
+            },
+            Light{
+                name: String::from("Studio lamp"),
+                id: 3,
+            }
+        ])
+    }
+
+    async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8)
+    -> Result<(), Error> {
+        Ok(())
+    }
+
+    async fn get_light_state(&self, light: &Light) -> Result<LightState, Error> {
+        Ok(LightState { on: true, reachable: true })
+    }
+}

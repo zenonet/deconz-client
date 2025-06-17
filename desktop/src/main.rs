@@ -5,13 +5,14 @@ use std::{
     env, error::Error, sync::{Arc, Mutex}
 };
 
-use deconz::{DeconzClient, Light, LightState};
+use deconz::{DeconzClient, DemoLightClient, Light, LightClient, LightState};
 use gtk::{glib, prelude::*};
-use gtk4::{self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow};
+use gtk4::{self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation, ScrolledWindow, SearchBar};
 
-struct ViewModel {
+struct ViewModel<C>
+where C: LightClient {
     state: Mutex<State>,
-    client: DeconzClient,
+    client: C,
 }
 
 struct State {
@@ -26,18 +27,34 @@ impl State {
         self.lights.get(i)
     }
 }
-impl ViewModel {
+
+impl Default for State{
+    fn default() -> Self {
+        State {
+            lights: vec![],
+            selected_index: usize::MAX,
+            selected_light_state: None,
+        }
+    }
+}
+
+impl ViewModel<DeconzClient> {
     fn init() -> Self {
         let url = env::var("DECONZ_URL").expect("Missing DECONZ_URL in env vars");
         let token = env::var("DECONZ_TOKEN").expect("Missing DECONZ_TOKEN in env vars");
         ViewModel {
-            state: Mutex::new(State {
-                lights: vec![],
-                selected_index: usize::MAX,
-                selected_light_state: None,
-            }),
+            state: Mutex::new(State::default()),
             client: DeconzClient::login_with_token(url, token)
                 .expect("Failed to connect to deconz server"),
+        }
+    }
+}
+
+impl ViewModel<DemoLightClient>{
+    fn init() -> Self{
+        ViewModel { 
+            state: Mutex::new(State::default()),
+            client: DemoLightClient{} 
         }
     }
 }
@@ -61,6 +78,14 @@ fn build_ui(application: &gtk::Application) -> Ui {
     let list_box = gtk::ListBox::new();
 
     let scrolled_window = ScrolledWindow::builder().child(&list_box).build();
+
+
+    // let search_box = SearchBar::builder().build();
+
+    // let selection_layout = gtk::Box::new(Orientation::Vertical, 10);
+    // selection_layout.append(&search_box);
+    // selection_layout.append(&selection_layout);
+
 
     let controller_layout = gtk::Box::new(Orientation::Vertical, 10);
     controller_layout.set_margin_start(20);
@@ -112,11 +137,12 @@ fn build_ui(application: &gtk::Application) -> Ui {
     ui
 }
 
-fn add_app_logic(ui: Ui) {
-    let model = Arc::new(ViewModel::init());
+fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
+    println!("Attaching app logic...");
     let ui = Arc::new(ui);
+    let model = Arc::new(model);
 
-    fn fetch_light_state(model: Arc<ViewModel>, ui: Arc<Ui>){
+    fn fetch_light_state<C: LightClient + 'static>(model: Arc<ViewModel<C>>, ui: Arc<Ui>){
         glib::spawn_future_local(async move {
             let mut state = model.state.lock().unwrap();
             if let Some(light) = state.selected_light() {
@@ -136,7 +162,7 @@ fn add_app_logic(ui: Ui) {
 
     let fetch_light_list = {
         let ui = ui.clone();
-        move |model: Arc<ViewModel>| {
+        move |model: Arc<ViewModel<C>>| {
             glib::spawn_future_local(async move {
                 let light_list = model.client.get_light_list().await.unwrap();
 
@@ -211,6 +237,8 @@ fn add_app_logic(ui: Ui) {
         ui.color_control.connect_rgba_notify(move |but|{
             let col = but.rgba();
 
+            println!("rgb: {}", col);
+
             let r = col.red();
             let g = col.green();
             let b = col.blue();
@@ -236,10 +264,12 @@ fn add_app_logic(ui: Ui) {
             let s = if cmax == 0.0{
                 0.0
             }else{
-                (diff / cmax) * 250.0
+                (diff / cmax) * 255.0
             };
 
             let b = cmax * 255.0;
+
+            println!("hsv: {} {} {}", h, s, b);
 
             let model = model.clone();
             glib::spawn_future_local(async move {
@@ -252,7 +282,7 @@ fn add_app_logic(ui: Ui) {
             });
         });
     }
-
+    println!("UI logic attached");
     fetch_light_list(model);
 }
 
@@ -263,10 +293,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build();
 
     fn init(app: &gtk::Application) {
+        println!("App init called!");
         let ui = build_ui(&app);
-        add_app_logic(ui);
-    }
+        println!("Setup ui");
+        let model = ViewModel::<DemoLightClient>::init();
 
+        add_app_logic(ui, model);
+    }
+    println!("Application builder done");
     application.connect_activate(init);
     application.run();
 
