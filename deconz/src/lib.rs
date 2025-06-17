@@ -27,9 +27,140 @@ pub struct Light {
 }
 
 #[derive(Debug, Clone, Deserialize, Copy)]
-pub struct LightState{
+pub struct LightState {
     pub on: bool,
     pub reachable: bool,
+}
+
+pub trait LightClient {
+    async fn get_light_list(&self) -> Result<Vec<Light>, crate::Error>;
+
+    async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error>;
+
+    async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8)
+    -> Result<(), Error>;
+
+    async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>;
+}
+
+impl LightClient for DeconzClient {
+    async fn get_light_list(&self) -> Result<Vec<Light>, crate::Error> {
+        let resp = self
+            .http
+            .get(
+                self.url
+                    .join(&format!("api/{}/lights", self.username))
+                    .unwrap(),
+            )
+            .send()
+            .await;
+
+        let resp = resp
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?;
+
+        #[derive(Deserialize)]
+        struct LightWithoutId {
+            name: String,
+        }
+
+        let lights = resp
+            .json::<HashMap<String, LightWithoutId>>()
+            .await
+            .map_err(|e| Error::HttpError(e))?;
+
+        let lights: Vec<Light> = lights
+            .into_iter()
+            .map(|(id, light)| {
+                u32::from_str_radix(&id, 10)
+                    .map_err(|e| Error::IdParseError(e))
+                    .and_then(|id| {
+                        Ok(Light {
+                            name: light.name,
+                            id,
+                        })
+                    })
+            })
+            .collect::<Result<Vec<Light>, Error>>()?;
+
+        Ok(lights)
+    }
+
+    async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error> {
+        #[derive(Serialize)]
+        struct OnOffReq {
+            on: bool,
+        }
+
+        let resp = self
+            .http
+            .put(
+                self.url
+                    .join(&format!("api/{}/lights/{}/state", self.username, light.id))
+                    .unwrap(),
+            )
+            .json(&OnOffReq { on: state })
+            .send()
+            .await;
+        let _ = resp
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?;
+
+        Ok(())
+    }
+
+    async fn set_light_color(
+        &self,
+        light: &Light,
+        hue: u16,
+        bri: u8,
+        sat: u8,
+    ) -> Result<(), Error> {
+        #[derive(Serialize)]
+        struct ColorChangeReq {
+            hue: u16,
+            bri: u8,
+            sat: u8,
+        }
+
+        self.http
+            .put(
+                self.url
+                    .join(&format!("api/{}/lights/{}/state", self.username, light.id))
+                    .unwrap(),
+            )
+            .json(&ColorChangeReq { hue, bri, sat })
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?;
+
+        Ok(())
+    }
+    
+    async fn get_light_state(&self, light: &Light) -> Result<LightState, Error> {
+        #[derive(Deserialize)]
+        struct OuterLightState {
+            state: LightState,
+        }
+
+        let state = self
+            .http
+            .get(
+                self.url
+                    .join(&format!("api/{}/lights/{}", self.username, light.id))
+                    .unwrap(),
+            )
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| Error::HttpError(e))?
+            .json::<OuterLightState>()
+            .await
+            .map_err(|_| Error::ResponseParseError)?;
+
+        Ok(state.state)
+    }
 }
 
 impl DeconzClient {
@@ -103,105 +234,5 @@ impl DeconzClient {
         };
 
         Ok(c)
-    }
-
-    pub async fn get_light_list(&self) -> Result<Vec<Light>, crate::Error> {
-        let resp = self
-            .http
-            .get(
-                self.url
-                    .join(&format!("api/{}/lights", self.username))
-                    .unwrap(),
-            )
-            .send()
-            .await;
-
-        let resp = resp
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| Error::HttpError(e))?;
-
-        #[derive(Deserialize)]
-        struct LightWithoutId {
-            name: String,
-        }
-
-        let lights = resp
-            .json::<HashMap<String, LightWithoutId>>()
-            .await
-            .map_err(|e| Error::HttpError(e))?;
-
-
-        let lights: Vec<Light> = lights.into_iter().map(|(id, light)| {
-            u32::from_str_radix(&id, 10)
-                .map_err(|e| Error::IdParseError(e))
-                .and_then(|id| {
-                    Ok(Light {
-                        name: light.name,
-                        id,
-                    })
-                })
-        }).collect::<Result<Vec<Light>, Error>>()?;
-
-        Ok(lights)
-    }
-
-    pub async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error>{
-        #[derive(Serialize)]
-        struct OnOffReq{
-            on: bool
-        }
-
-        let resp = self.http
-            .put(self.url.join(&format!("api/{}/lights/{}/state", self.username, light.id)).unwrap())
-            .json(&OnOffReq{
-                on: state
-            })
-            .send().await;
-        let _ = resp.and_then(|r| r.error_for_status()).map_err(|e| Error::HttpError(e))?;
-
-        Ok(())
-    }
-
-    pub async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8) -> Result<(), Error>{
-        #[derive(Serialize)]
-        struct ColorChangeReq{
-            hue: u16,
-            bri: u8,
-            sat: u8,
-        }
-
-        self.http
-            .put(self.url.join(&format!("api/{}/lights/{}/state", self.username, light.id)).unwrap())
-            .json(&ColorChangeReq{
-                hue,
-                bri,
-                sat
-            })
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| Error::HttpError(e))?;
-
-        Ok(())
-    }
-
-    pub async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>{
-        
-        #[derive(Deserialize)]
-        struct OuterLightState{
-            state: LightState
-        }
-        
-        let state = self.http
-            .get(self.url.join(&format!("api/{}/lights/{}", self.username, light.id)).unwrap())
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-            .map_err(|e| Error::HttpError(e))?
-            .json::<OuterLightState>()
-            .await
-            .map_err(|_| Error::ResponseParseError)?;
-
-        Ok(state.state)
     }
 }
