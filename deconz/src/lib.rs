@@ -37,7 +37,7 @@ pub trait LightClient {
 
     async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error>;
 
-    async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8)
+    async fn set_light_color(&self, light: &Light, hue: Option<u16>, bri: Option<u8>, sat: Option<u8>)
     -> Result<(), Error>;
 
     async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>;
@@ -112,15 +112,15 @@ impl LightClient for DeconzClient {
     async fn set_light_color(
         &self,
         light: &Light,
-        hue: u16,
-        bri: u8,
-        sat: u8,
+        hue: Option<u16>,
+        bri: Option<u8>,
+        sat: Option<u8>,
     ) -> Result<(), Error> {
         #[derive(Serialize)]
         struct ColorChangeReq {
-            hue: u16,
-            bri: u8,
-            sat: u8,
+            hue: Option<u16>,
+            bri: Option<u8>,
+            sat: Option<u8>,
         }
 
         self.http
@@ -265,7 +265,7 @@ impl LightClient for DemoLightClient{
         Ok(())
     }
 
-    async fn set_light_color(&self, light: &Light, hue: u16, bri: u8, sat: u8)
+    async fn set_light_color(&self, light: &Light, hue: Option<u16>, bri: Option<u8>, sat: Option<u8>)
     -> Result<(), Error> {
         Ok(())
     }

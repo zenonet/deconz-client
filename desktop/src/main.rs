@@ -8,12 +8,12 @@ use std::{
 };
 
 use deconz::{DeconzClient, DemoLightClient, Light, LightClient, LightState};
-use gtk::prelude::BoxExt;
+use gtk::{prelude::BoxExt, Scale};
 use gtk::{
     self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation,
-    ScrolledWindow, SearchBar, prelude::*,
+    ScrolledWindow, prelude::*,
 };
-use gtk::{Entry, glib, prelude::*};
+use gtk::{Entry, glib};
 
 struct ViewModel<C>
 where
@@ -76,6 +76,7 @@ struct Ui {
     controller_layout: gtk::Box,
     color_control: ColorDialogButton,
     search_bar: Entry,
+    brightness_slider: Scale,
 }
 
 fn build_ui(application: &gtk::Application) -> Ui {
@@ -123,6 +124,13 @@ fn build_ui(application: &gtk::Application) -> Ui {
 
     controller_layout.append(&col);
 
+
+
+
+    let brightness_slider = Scale::with_range(Orientation::Horizontal, 0.0, 255.0, 1.0);
+
+    controller_layout.append(&brightness_slider);
+
     let layout = gtk::Box::new(Orientation::Horizontal, 0);
     layout.set_homogeneous(true);
 
@@ -139,10 +147,11 @@ fn build_ui(application: &gtk::Application) -> Ui {
         toggle_button_text,
         controller_layout,
         color_control: col,
-        search_bar
+        search_bar,
+        brightness_slider
     };
 
-    window.present();
+     window.present();
 
     ui
 }
@@ -327,11 +336,11 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
             glib::spawn_future_local(async move {
                 // Convert color from rgb to hsb
 
-                let state = model.state.lock().unwrap();
+                let state = model.state.lock().unwrap(); // TODO: fix this lock staying while the request is done. fr this time
                 let light = state.selected_light().unwrap(); // todo fix unwrap
                 model
                     .client
-                    .set_light_color(light, h as u16, b as u8, s as u8)
+                    .set_light_color(light, Some(h as u16), Some(b as u8), Some(s as u8))
                     .await
                     .unwrap();
             });
@@ -340,6 +349,24 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
 
     {
         let model = model.clone();
+        ui.brightness_slider.connect_value_changed(move |s|{
+            let val = s.value() as u8;
+
+            let model = model.clone();
+            glib::spawn_future_local(async move {
+                let state = model.state.lock().unwrap();
+                let light = state.selected_light().unwrap();
+
+                model
+                .client
+                .set_light_color(light, None, Some(val), None)
+                .await
+                .unwrap();
+
+            });
+        });
+    }    
+    {
         let update_light_list = update_light_list.clone();
         ui.search_bar.connect_changed(move |_| {
             update_light_list();
@@ -356,14 +383,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build();
 
     fn init(app: &gtk::Application) {
-        println!("App init called!");
+
         let ui = build_ui(&app);
-        println!("Setup ui");
+
         let model = ViewModel::<DeconzClient>::init();
 
         add_app_logic(ui, model);
     }
-    println!("Application builder done");
+
     application.connect_activate(init);
     application.run();
 
