@@ -8,12 +8,13 @@ use std::{
 };
 
 use deconz::{DeconzClient, DemoLightClient, Light, LightClient, LightState};
-use gtk::{prelude::BoxExt, Scale};
+use gtk::{gdk::RGBA, prelude::BoxExt, Scale};
 use gtk::{
     self as gtk, Button, ColorDialog, ColorDialogButton, Label, ListBox, Orientation,
     ScrolledWindow, prelude::*,
 };
 use gtk::{Entry, glib};
+use palette::{rgb::Rgb, FromColor, Hsv, IntoColor, RgbHue, Srgb};
 
 struct ViewModel<C>
 where
@@ -183,6 +184,15 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
                 } else {
                     "Turn on"
                 });
+
+                let hsv = Hsv::new(
+                    RgbHue::from_degrees(light_state.hue as f32 / u16::MAX as f32 * 360.0),
+                    light_state.sat as f32 / 255.0,
+                    light_state.bri as f32 / 255.0
+                );
+                
+                let rgb: Srgb = hsv.into_color();
+                ui.color_control.set_rgba(&RGBA::new(rgb.red, rgb.green, rgb.blue, 1.0));
             }
         });
     }
@@ -300,37 +310,9 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
         ui.color_control.connect_rgba_notify(move |but| {
             let col = but.rgba();
 
-            println!("rgb: {}", col);
-
-            let r = col.red();
-            let g = col.green();
-            let b = col.blue();
-
-            let cmax = r.max(g).max(b);
-            let cmin = r.min(g).min(b);
-            let diff = cmax - cmin;
-
-            let h = if cmax == cmin {
-                0.0
-            } else if cmax == r {
-                (60.0 * ((g - b) / diff) + 360.0) % 360.0
-            } else if cmax == g {
-                (60.0 * ((b - r) / diff) + 120.0) % 360.0
-            } else if cmax == b {
-                (60.0 * ((r - g) / diff) + 240.0) % 360.0
-            } else {
-                panic!("WTF, this color couldn't be converted to HSV!");
-            } * const { u16::MAX / 360 } as f32;
-
-            let s = if cmax == 0.0 {
-                0.0
-            } else {
-                (diff / cmax) * 255.0
-            };
-
-            let b = cmax * 255.0;
-
-            println!("hsv: {} {} {}", h, s, b);
+            let rgb = Rgb::new(col.red(), col.green(), col.blue());
+            let hsv: Hsv = Hsv::from_color(rgb);
+            let h = (hsv.hue.into_positive_degrees()) / 360.0 * u16::MAX as f32;
 
             let model = model.clone();
             glib::spawn_future_local(async move {
@@ -340,7 +322,11 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
                 let light = state.selected_light().unwrap(); // todo fix unwrap
                 model
                     .client
-                    .set_light_color(light, Some(h as u16), Some(b as u8), Some(s as u8))
+                    .set_light_color(light,
+                        Some(h as u16),
+                        Some((hsv.value * 255.0) as u8),
+                        Some((hsv.saturation * 255.0) as u8)
+                    )
                     .await
                     .unwrap();
             });
