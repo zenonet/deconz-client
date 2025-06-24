@@ -30,6 +30,9 @@ pub struct Light {
 pub struct LightState {
     pub on: bool,
     pub reachable: bool,
+    pub hue: u16,
+    pub bri: u8,
+    pub sat: u8,
 }
 
 pub trait LightClient {
@@ -271,6 +274,6 @@ impl LightClient for DemoLightClient{
     }
 
     async fn get_light_state(&self, light: &Light) -> Result<LightState, Error> {
-        Ok(LightState { on: true, reachable: true })
+        Ok(LightState { on: true, reachable: true, hue: 0, bri: 255, sat: 200 })
     }
 }
