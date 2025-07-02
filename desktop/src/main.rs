@@ -186,9 +186,9 @@ fn add_app_logic<C: LightClient + 'static>(ui: Ui, model: ViewModel<C>) {
                 });
 
                 let hsv = Hsv::new(
-                    RgbHue::from_degrees(light_state.hue as f32 / u16::MAX as f32 * 360.0),
-                    light_state.sat as f32 / 255.0,
-                    light_state.bri as f32 / 255.0
+                    RgbHue::from_degrees(light_state.hue.unwrap_or_default() as f32 / u16::MAX as f32 * 360.0),
+                    light_state.sat.unwrap_or_default() as f32 / 255.0,
+                    light_state.bri.unwrap_or(255) as f32 / 255.0
                 );
                 
                 let rgb: Srgb = hsv.into_color();
