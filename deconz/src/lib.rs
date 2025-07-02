@@ -16,7 +16,7 @@ pub struct DeconzClient {
     /// The url of the deconz server
     url: Url,
     /// The API token for the deconz server
-    username: String,
+    pub username: String,
     http: reqwest::Client,
 }
 

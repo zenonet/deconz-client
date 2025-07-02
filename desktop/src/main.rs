@@ -159,7 +159,10 @@ impl MainWindow {
         let ui = Arc::new(self);
         let model = Arc::new(model);
 
-        fn fetch_light_state<C: LightClient + 'static>(model: Arc<ViewModel<C>>, ui: Arc<MainWindow>) {
+        fn fetch_light_state<C: LightClient + 'static>(
+            model: Arc<ViewModel<C>>,
+            ui: Arc<MainWindow>,
+        ) {
             glib::spawn_future_local(async move {
                 let mut state = model.state.lock().unwrap();
                 if let Some(light) = state.selected_light() {
@@ -372,17 +375,112 @@ impl MainWindow {
     }
 }
 
+struct SetupWindow {
+    window: ApplicationWindow,
+    ip_field: Entry,
+    link_button: Button,
+    on_login_completed: Box<dyn Fn(&SetupWindow, String, String)>,
+}
+
+impl SetupWindow {
+    fn new(
+        app: &gtk::Application,
+        on_login_completed: Box<dyn Fn(&SetupWindow, String, String)>,
+    ) -> Self {
+        let window = gtk::ApplicationWindow::new(app);
+
+        window.set_title(Some("Setup"));
+        window.set_default_size(500, 700);
+
+        let layout = gtk::Box::new(Orientation::Vertical, 10);
+
+        let label = Label::builder()
+            .label("Please log in to your deconz server")
+            .build();
+
+        layout.append(&label);
+
+        let ip_field = Entry::builder().placeholder_text("Deconz Server address").build();
+        layout.append(&ip_field);
+
+        let label = Label::builder().label("please click the link button on your deconz server, then click the button here").build();
+        layout.append(&label);
+
+        let link_button = Button::builder().label("Login").build();
+        layout.append(&link_button);
+
+        window.set_child(Some(&layout));
+        window.present();
+
+        let w = Self {
+            window,
+            ip_field,
+            link_button,
+            on_login_completed,
+        };
+
+        w
+    }
+
+    fn add_logic(self) {
+        let s = Arc::new(self);
+        s.clone().link_button.connect_clicked(move |_|{
+            println!("Link button clicked");
+
+            let s = s.clone();
+            glib::spawn_future_local(async move {
+                let ip = String::from(s.ip_field.text());
+                let client = DeconzClient::login_with_link_button(&ip).await; // TODO: Error handling
+            
+                match client{
+                    Ok(client) => {
+                        (&s.on_login_completed)(&*s, String::from(ip), client.username);
+                    },
+                    Err(e) => {
+                        println!("{:#?}", e);
+                    }
+                }
+            });
+        });
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let application = gtk::Application::builder()
         .application_id("de.zenonet.deconz")
         .build();
 
-    fn init(app: &gtk::Application) {
+    fn main_window(app: &gtk::Application){
         let ui = MainWindow::new(&app);
-
+    
         let model = ViewModel::<DeconzClient>::init();
         ui.add_app_logic(model);
+
+    }
+
+    fn init(app: &gtk::Application) {
+        // Load credentials here
+        if true {
+            // If no credentials are found
+            let app_for_later = app.clone(); // this is reference counted (i think)
+            let setup_window = SetupWindow::new(
+                &app,
+                Box::new(move |window, ip, token| {
+                    println!("Got login data!");
+                    unsafe {
+                        env::set_var("DECONZ_URL", ip);
+                        env::set_var("DECONZ_TOKEN", token);
+                        window.window.close(); // This probably leaks the SetupWindow object but whatever
+                        main_window(&app_for_later);
+                    };
+                }),
+            );
+            setup_window.add_logic();
+        }else {
+            main_window(app);
+        }
+
     }
 
     application.connect_activate(init);
