@@ -435,6 +435,10 @@ impl SetupWindow {
         let label = Label::builder()
             .label("please click the link button on your deconz server, then click the button here")
             .build();
+
+        layout.append(&label);
+
+        let label = Label::builder().label("The \"username\" which is used to authenticate users is saved in clear text").build();
         layout.append(&label);
 
         let link_button = Button::builder().label("Login").build();
