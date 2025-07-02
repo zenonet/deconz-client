@@ -4,6 +4,8 @@
 use std::{
     env,
     error::Error,
+    fs::{create_dir, File},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -15,6 +17,7 @@ use gtk::{
 use gtk::{ApplicationWindow, Scale, gdk::RGBA, prelude::BoxExt};
 use gtk::{Entry, glib};
 use palette::{FromColor, Hsv, IntoColor, RgbHue, Srgb, rgb::Rgb};
+use serde::{Deserialize, Serialize};
 
 struct ViewModel<C>
 where
@@ -66,6 +69,30 @@ impl ViewModel<DemoLightClient> {
             client: DemoLightClient {},
         }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Config {
+    url: String,
+    username: String,
+}
+
+fn config_file_path() -> PathBuf {
+    glib::user_config_dir()
+        .join("deconz-client")
+        .join("config.json")
+}
+
+fn store_credentials(url: String, username: String) {
+    let config = Config { url, username };
+
+    create_dir(config_file_path().parent().unwrap()).unwrap();
+    let file = File::create(config_file_path()).unwrap();
+    serde_json::to_writer_pretty(file, &config).unwrap();
+}
+
+fn load_credentials() -> Option<Config> {
+    File::open(config_file_path()).ok().and_then(|file| serde_json::from_reader::<_, Config>(file).ok())
 }
 
 struct MainWindow {
@@ -400,10 +427,14 @@ impl SetupWindow {
 
         layout.append(&label);
 
-        let ip_field = Entry::builder().placeholder_text("Deconz Server address").build();
+        let ip_field = Entry::builder()
+            .placeholder_text("Deconz Server address")
+            .build();
         layout.append(&ip_field);
 
-        let label = Label::builder().label("please click the link button on your deconz server, then click the button here").build();
+        let label = Label::builder()
+            .label("please click the link button on your deconz server, then click the button here")
+            .build();
         layout.append(&label);
 
         let link_button = Button::builder().label("Login").build();
@@ -424,18 +455,18 @@ impl SetupWindow {
 
     fn add_logic(self) {
         let s = Arc::new(self);
-        s.clone().link_button.connect_clicked(move |_|{
+        s.clone().link_button.connect_clicked(move |_| {
             println!("Link button clicked");
 
             let s = s.clone();
             glib::spawn_future_local(async move {
                 let ip = String::from(s.ip_field.text());
                 let client = DeconzClient::login_with_link_button(&ip).await; // TODO: Error handling
-            
-                match client{
+
+                match client {
                     Ok(client) => {
                         (&s.on_login_completed)(&*s, String::from(ip), client.username);
-                    },
+                    }
                     Err(e) => {
                         println!("{:#?}", e);
                     }
@@ -451,17 +482,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .application_id("de.zenonet.deconz")
         .build();
 
-    fn main_window(app: &gtk::Application){
+    fn main_window(app: &gtk::Application) {
         let ui = MainWindow::new(&app);
-    
+
         let model = ViewModel::<DeconzClient>::init();
         ui.add_app_logic(model);
-
     }
 
     fn init(app: &gtk::Application) {
         // Load credentials here
-        if true {
+        if let Some(config) = load_credentials() {
+            unsafe {
+                env::set_var("DECONZ_URL", config.url);
+                env::set_var("DECONZ_TOKEN", config.username);
+            };
+            main_window(app);
+        } else {
             // If no credentials are found
             let app_for_later = app.clone(); // this is reference counted (i think)
             let setup_window = SetupWindow::new(
@@ -469,18 +505,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 Box::new(move |window, ip, token| {
                     println!("Got login data!");
                     unsafe {
-                        env::set_var("DECONZ_URL", ip);
-                        env::set_var("DECONZ_TOKEN", token);
-                        window.window.close(); // This probably leaks the SetupWindow object but whatever
-                        main_window(&app_for_later);
+                        env::set_var("DECONZ_URL", &ip);
+                        env::set_var("DECONZ_TOKEN", &token);
                     };
+                    store_credentials(ip, token);
+                    window.window.close(); // This probably leaks the SetupWindow object but whatever
+                    main_window(&app_for_later);
                 }),
             );
             setup_window.add_logic();
-        }else {
-            main_window(app);
         }
-
     }
 
     application.connect_activate(init);
