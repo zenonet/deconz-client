@@ -86,7 +86,8 @@ fn config_file_path() -> PathBuf {
 fn store_credentials(url: String, username: String) {
     let config = Config { url, username };
 
-    create_dir(config_file_path().parent().unwrap()).unwrap();
+    // lets just ignore the result to allow for it failing because the directory already exists
+    _ = create_dir(config_file_path().parent().unwrap());
     let file = File::create(config_file_path()).unwrap();
     serde_json::to_writer_pretty(file, &config).unwrap();
 }
