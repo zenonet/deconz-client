@@ -407,6 +407,7 @@ struct SetupWindow {
     window: ApplicationWindow,
     ip_field: Entry,
     link_button: Button,
+    error_msg: Label,
     on_login_completed: Box<dyn Fn(&SetupWindow, String, String)>,
 }
 
@@ -445,6 +446,9 @@ impl SetupWindow {
         let link_button = Button::builder().label("Login").build();
         layout.append(&link_button);
 
+        let error_msg = Label::builder().label("").build();
+        layout.append(&error_msg);
+
         window.set_child(Some(&layout));
         window.present();
 
@@ -453,6 +457,7 @@ impl SetupWindow {
             ip_field,
             link_button,
             on_login_completed,
+            error_msg
         };
 
         w
@@ -462,6 +467,7 @@ impl SetupWindow {
         let s = Arc::new(self);
         s.clone().link_button.connect_clicked(move |_| {
             println!("Link button clicked");
+            s.error_msg.set_text("");
 
             let s = s.clone();
             glib::spawn_future_local(async move {
@@ -477,9 +483,24 @@ impl SetupWindow {
 
                 match client {
                     Ok(client) => {
-                        (&s.on_login_completed)(&*s, String::from(ip), client.username);
+                        (&s.on_login_completed)(&*s, ip, client.username);
                     }
                     Err(e) => {
+                        let msg = match &e{
+                             deconz::Error::HttpError(e) => 
+                            if let Some(status) = e.status(){
+                                if status.as_u16() == 403{
+                                    format!("Error: Authorization button was not pressed")
+                                }else{
+                                    format!("Error: {}", status.to_string())
+                                }
+                            }else{
+                                e.to_string()
+                            }
+                            deconz::Error::ResponseParseError(e) => format!("Error: {}", e),
+                            deconz::Error::IdParseError(e) => format!("Error: {}", e.to_string())
+                        };
+                        s.error_msg.set_text(&msg);
                         println!("{:#?}", e);
                     }
                 }
@@ -499,7 +520,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let model = ViewModel::<DeconzClient>::init();
         ui.add_app_logic(model);
-    }
+    }   
 
     fn init(app: &gtk::Application) {
         // Load credentials here
