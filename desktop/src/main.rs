@@ -466,6 +466,13 @@ impl SetupWindow {
             let s = s.clone();
             glib::spawn_future_local(async move {
                 let ip = String::from(s.ip_field.text());
+                
+                let ip = if ip.contains("://"){
+                    ip
+                }else{
+                    format!("http://{}", ip)
+                };
+
                 let client = DeconzClient::login_with_link_button(&ip).await; // TODO: Error handling
 
                 match client {
