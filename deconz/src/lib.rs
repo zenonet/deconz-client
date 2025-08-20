@@ -1,4 +1,4 @@
-use std::{collections::HashMap, num::ParseIntError};
+use std::{collections::HashMap, num::ParseIntError, sync::Mutex};
 
 use reqwest::{IntoUrl, Url};
 use serde::{Deserialize, Serialize};
@@ -40,8 +40,13 @@ pub trait LightClient {
 
     async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error>;
 
-    async fn set_light_color(&self, light: &Light, hue: Option<u16>, bri: Option<u8>, sat: Option<u8>)
-    -> Result<(), Error>;
+    async fn set_light_color(
+        &self,
+        light: &Light,
+        hue: Option<u16>,
+        bri: Option<u8>,
+        sat: Option<u8>,
+    ) -> Result<(), Error>;
 
     async fn get_light_state(&self, light: &Light) -> Result<LightState, Error>;
 }
@@ -140,7 +145,7 @@ impl LightClient for DeconzClient {
 
         Ok(())
     }
-    
+
     async fn get_light_state(&self, light: &Light) -> Result<LightState, Error> {
         #[derive(Deserialize)]
         struct OuterLightState {
@@ -241,40 +246,111 @@ impl DeconzClient {
     }
 }
 
-
-
-pub struct DemoLightClient{
-
+struct DemoLight {
+    light: Light,
+    state: bool,
+    hue: u16,
+    sat: u8,
+    bri: u8,
 }
 
-impl LightClient for DemoLightClient{
+pub struct DemoLightClient {
+    lights: Mutex<Vec<DemoLight>>,
+}
+
+impl DemoLightClient {
+    pub fn new() -> Self {
+        DemoLightClient {
+            lights: Mutex::new(vec![
+                DemoLight {
+                    light: Light {
+                        name: String::from("Bathroom light"),
+                        id: 1,
+                    },
+                    state: true,
+                    hue: 0,
+                    sat: 40,
+                    bri: 255,
+                },
+                DemoLight {
+                    light: Light {
+                        name: String::from("Outside lighting"),
+                        id: 2,
+                    },
+                    state: true,
+                    hue: 0,
+                    sat: 0,
+                    bri: 30,
+                },
+                DemoLight {
+                    light: Light {
+                        name: String::from("Studio lamp"),
+                        id: 3,
+                    },
+                    state: true,
+                    hue: 4567,
+                    sat: 255,
+                    bri: 255,
+                },
+            ]),
+        }
+    }
+}
+
+impl LightClient for DemoLightClient {
     async fn get_light_list(&self) -> Result<Vec<Light>, crate::Error> {
-        Ok(vec![
-            Light{
-                name: String::from("Bathroom light"),
-                id: 1
-            },
-            Light{
-                name: String::from("Outside lighting"),
-                id: 2,
-            },
-            Light{
-                name: String::from("Studio lamp"),
-                id: 3,
-            }
-        ])
+        Ok(self.lights.lock().unwrap().iter().map(|l| l.light.clone()).collect())
     }
 
     async fn set_on_state(&self, light: &Light, state: bool) -> Result<(), Error> {
+        println!(
+            "Demo request triggered:\n    {} was set to {}",
+            light.name,
+            if state { "on" } else { "off" }
+        );
+        let mut lights = self.lights.lock().unwrap();
+        let sel_light = lights.iter_mut().find(|l| l.light.id == light.id).unwrap();
+
+        sel_light.state = state;
         Ok(())
     }
 
-    async fn set_light_color(&self, light: &Light, hue: Option<u16>, bri: Option<u8>, sat: Option<u8>)
-    -> Result<(), Error> {
+    async fn set_light_color(
+        &self,
+        light: &Light,
+        hue: Option<u16>,
+        bri: Option<u8>,
+        sat: Option<u8>,
+    ) -> Result<(), Error> {
+        println!(
+            "Demo request triggered:\n    {} was set to color hue: {:?}, sat: {:?}, bri: {:?}",
+            light.name, hue, sat, bri
+        );
+
+        let mut lights = self.lights.lock().unwrap();
+        let sel_light = lights.iter_mut().find(|l| l.light.id == light.id).unwrap();
+
+        if let Some(hue) = hue{
+            sel_light.hue = hue;
+        }
+        if let Some(sat) = sat{
+            sel_light.sat = sat;
+        }
+        if let Some(bri) = bri{
+            sel_light.bri = bri;
+        }
         Ok(())
     }
 
     async fn get_light_state(&self, light: &Light) -> Result<LightState, Error> {
-        Ok(LightState { on: true, reachable: true, hue: Some(0), bri: Some(255), sat: Some(200) })
+        let lights = self.lights.lock().unwrap();
+        let light = lights.iter().find(|l| l.light.id == light.id).unwrap();
+        Ok(LightState {
+            on: light.state,
+            reachable: true,
+            hue: Some(light.hue),
+            bri: Some(light.bri),
+            sat: Some(light.sat),
+        })
     }
 }
