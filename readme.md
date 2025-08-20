@@ -11,7 +11,7 @@ To use the Deconz client, you of course need a deconz server. If you just want t
 
 ## About Windows Compatibility
 
-Unfortunately, the windows build is unstable. For me, when opening the color picker, it crashes. I am not able to diagnose the issue. Let's just say windows is not officially supported.
+Unfortunately, the windows build is unstable. For some, when opening the color picker, it crashes. I am not able to diagnose the issue. I already spend hours trying to diagnose this and I think at this point it's better to just say windows is not officially supported. You can try running deconz-client in [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/tutorials/gui-apps)
 
 ## Features:
 
