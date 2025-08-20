@@ -66,7 +66,7 @@ impl ViewModel<DemoLightClient> {
     fn init() -> Self {
         ViewModel {
             state: Mutex::new(State::default()),
-            client: DemoLightClient {},
+            client: DemoLightClient::new(),
         }
     }
 }
@@ -199,7 +199,6 @@ impl MainWindow {
                         .get_light_state(light)
                         .await
                         .expect(&format!("Failed to load state of light {}", light.name));
-                    println!("Got state for {}:\n{:#?}", light.name, light_state);
                     state.selected_light_state = Some(light_state);
                     ui.controller_layout.set_visible(true);
                     ui.light_status_label.set_text(if light_state.reachable {
@@ -408,13 +407,16 @@ struct SetupWindow {
     ip_field: Entry,
     link_button: Button,
     error_msg: Label,
+    demo_button: Button,
     on_login_completed: Box<dyn Fn(&SetupWindow, String, String)>,
+    on_user_requested_demo: Box<dyn Fn(&SetupWindow)>
 }
 
 impl SetupWindow {
     fn new(
         app: &gtk::Application,
         on_login_completed: Box<dyn Fn(&SetupWindow, String, String)>,
+        on_user_requested_demo: Box<dyn Fn(&SetupWindow)>,
     ) -> Self {
         let window = gtk::ApplicationWindow::new(app);
 
@@ -449,6 +451,9 @@ impl SetupWindow {
         let error_msg = Label::builder().label("").build();
         layout.append(&error_msg);
 
+        let demo_button = Button::builder().label("Start Demo").build();
+        layout.append(&demo_button);
+
         window.set_child(Some(&layout));
         window.present();
 
@@ -457,6 +462,8 @@ impl SetupWindow {
             ip_field,
             link_button,
             on_login_completed,
+            on_user_requested_demo,
+            demo_button,
             error_msg
         };
 
@@ -465,8 +472,10 @@ impl SetupWindow {
 
     fn add_logic(self) {
         let s = Arc::new(self);
+        let s_c = s.clone();
         s.clone().link_button.connect_clicked(move |_| {
-            println!("Link button clicked");
+            let s = &s_c;
+
             s.error_msg.set_text("");
 
             let s = s.clone();
@@ -506,6 +515,10 @@ impl SetupWindow {
                 }
             });
         });
+
+        s.clone().demo_button.connect_clicked(move |_|{
+            (&s.on_user_requested_demo)(&*s);
+        });
     }
 }
 
@@ -520,6 +533,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         let model = ViewModel::<DeconzClient>::init();
         ui.add_app_logic(model);
+    }
+
+    fn demo_window(app: &gtk::Application) {
+        let ui = MainWindow::new(&app);
+
+        let model = ViewModel::<DemoLightClient>::init();
+        ui.add_app_logic(model);
     }   
 
     fn init(app: &gtk::Application) {
@@ -533,6 +553,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         } else {
             // If no credentials are found
             let app_for_later = app.clone(); // this is reference counted (i think)
+            let app_for_later_again = app.clone();
             let setup_window = SetupWindow::new(
                 &app,
                 Box::new(move |window, ip, token| {
@@ -545,6 +566,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     window.window.close(); // This probably leaks the SetupWindow object but whatever
                     main_window(&app_for_later);
                 }),
+                Box::new(move |window|{
+                    println!("Starting demo!");
+                    window.window.close();
+                    demo_window(&app_for_later_again);
+                })
             );
             setup_window.add_logic();
         }
