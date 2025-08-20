@@ -27,3 +27,9 @@ Unfortunately, the windows build is unstable. For some, when opening the color p
 
 https://github.com/user-attachments/assets/88b540c0-af45-4218-b413-4c6b2a95ca7e
 
+
+
+## Demo Mode looks like this:
+https://github.com/user-attachments/assets/c22364fd-3ed4-4974-97fe-159390bc52a7
+
+
