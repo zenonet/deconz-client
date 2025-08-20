@@ -5,10 +5,13 @@ The application is written in Rust with the `gtk-rs` GTK bindings.
 
 The app fetches a list of lights connected to your server and allows you to control their state (on/off) and their color.
 
-
 ## Demo Mode
 
 To use the Deconz client, you of course need a deconz server. If you just want to test the functionality of the client quickly though, you can use demo mode. This is a separate mode where light state is saved internally and you can see requests the client would make in standard output.
+
+## About Windows Compatibility
+
+Unfortunately, the windows build is unstable. For me, when opening the color picker, it crashes. I am not able to diagnose the issue. Let's just say windows is not officially supported.
 
 ## Features:
 
