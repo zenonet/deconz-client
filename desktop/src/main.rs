@@ -223,6 +223,8 @@ impl MainWindow {
                     let rgb: Srgb = hsv.into_color();
                     ui.color_control
                         .set_rgba(&RGBA::new(rgb.red, rgb.green, rgb.blue, 1.0));
+
+                    ui.brightness_slider.set_value(hsv.value as f64 * 255.0);
                 }
             });
         }
@@ -346,12 +348,16 @@ impl MainWindow {
 
         {
             let model = model.clone();
+            let ui2 = ui.clone();
             ui.color_control.connect_rgba_notify(move |but| {
                 let col = but.rgba();
 
                 let rgb = Rgb::new(col.red(), col.green(), col.blue());
                 let hsv: Hsv = Hsv::from_color(rgb);
                 let h = (hsv.hue.into_positive_degrees()) / 360.0 * u16::MAX as f32;
+
+                dbg!(hsv.value);
+                ui2.brightness_slider.set_value(hsv.value as f64 * 255.0);
 
                 let model = model.clone();
                 glib::spawn_future_local(async move {
@@ -375,6 +381,7 @@ impl MainWindow {
 
         {
             let model = model.clone();
+            let ui2 = ui.clone();
             ui.brightness_slider.connect_value_changed(move |s| {
                 let val = s.value() as u8;
 
